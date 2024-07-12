@@ -1,58 +1,32 @@
 pipeline {
-    agent any
-
     environment {
-        AWS_ACCOUNT_ID = '740536218642'
         AWS_REGION = 'us-east-1'
-        ECR_REPOSITORY_NAME = 'test-jk'
-        IMAGE_TAG = "${env.BUILD_ID}"
+        AWS_ACCOUNT_ID = '740536218642'
+        ECR_REPOSITORY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/test-jk"
+        IMAGE_TAG = '10'
     }
-
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh 'mvn clean package'
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    docker.build("${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}:${IMAGE_TAG}")
-                }
-            }
-        }
-
         stage('Login to ECR') {
             steps {
                 script {
-                    withAWS(credentials: 'AWS_test-jk', region: AWS_REGION) {
-					sh 'aws sts get-caller-identity' // Verify AWS credentials
-					sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com'
+                    withAWS(credentials: 'AWS_test-jk', region: "${AWS_REGION}") {
+                        // Verify AWS credentials
+                        sh 'aws sts get-caller-identity'
+                        // Log in to ECR
+                        sh 'aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY}'
                     }
                 }
             }
         }
-
-
-        stage('Push to ECR') {
+        stage('Build and Tag Docker Image') {
             steps {
-                script {
-                    docker.image("${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}:${IMAGE_TAG}").push()
-                }
+                sh 'docker build -t ${ECR_REPOSITORY}:${IMAGE_TAG} .'
             }
         }
-    }
-
-    post {
-        always {
-            cleanWs()
+        stage('Push to ECR') {
+            steps {
+                sh 'docker push ${ECR_REPOSITORY}:${IMAGE_TAG}'
+            }
         }
     }
 }
